@@ -1,0 +1,18 @@
+# Projektregeln: Crypto End-of-Day Reversal (Baltussen, Da & Soebhag Replikation)
+
+## Tech-Stack & Performance
+- Programmiersprache: R (nutze konsequent `data.table`, `arrow`, `fixest`, `ggplot2`, `lubridate`).
+- Speichere große Datensätze immer als `.parquet` (`arrow::write_parquet`), niemals als CSV oder RDS.
+- Nutze Vektorisierung und `data.table`-Syntax (`:=`, `shift`, `by =`), vermeide langsame `dplyr`-Pipelines auf Millionen Zeilen.
+
+## Ökonometrische & Daten-Regeln (Strikt einhalten!)
+1. **Kein Look-Ahead-Bias:** Gewichte (Vortages-USDT-Volumen) und Kontrollvariablen müssen strikt vor dem Zielintervall gemessen werden.
+2. **Binance Timestamp-Falle (ab 2025):** Binance Data Vision Spot-Daten nutzen bis 31.12.2024 Millisekunden (13 Stellen) und ab 01.01.2025 Mikrosekunden (16 Stellen). Konvertiere Timestamps immer dynamisch (`ifelse(ts > 1e14, ts / 1e6, ts / 1e3)`).
+3. **Zeitzonen:** Alle Rohdaten sind in UTC. Wenn der US-Ankerpunkt (16:00 EST/EDT) analysiert wird, muss eine explizite Konvertierung nach `America/New_York` (inkl. DST-Umstellung) erfolgen.
+4. **Return-Definitionen (analog Baltussen et al., 2026):**
+   - `ret_30m`: Einfacher Return `P[k] / P[k-1] - 1`.
+   - `ret_prev_skip` (ROD3-Analog): `P[k-2] / P[k-48] - 1` (überspringt 30 Min. gegen Bid-Ask-Bounce).
+   - `ret_prev_noskip` (Robustheit): `P[k-1] / P[k-48] - 1`.
+5. **Winsorizing:** Alle Returns querschnittsweise pro Zeitstempel bei 1% und 99% winsorizen.
+6. **Panel-Regressionen:** Immer `fixest::feols()` mit Coin- und Datums-Fixed-Effects (`| symbol + date`) sowie Double-Clustering (`cluster = ~symbol + date`).
+7. **LaTeX-Output:** Exportiere Tabellen sauber via `fixest::etable(..., tex = TRUE)` nach `output/tables/` und Grafiken als PDF/PNG nach `output/figures/`.
