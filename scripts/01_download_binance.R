@@ -21,6 +21,12 @@ EXCLUDED_BASES <- c(
   "MXN", "CZK", "PAXG", "XAUT", "BKRW", "BVND"
 )
 
+# Wrapped & Liquid-Staked Peg-Duplikate (verhindert Doppelzählung von BTC/ETH/SOL)
+EXCLUDED_WRAPPED <- c(
+  "WBTC", "BTCB", "RENBTC", "WBETH", "BETH", "WETH", "STETH", "WSTETH",
+  "CBETH", "EZETH", "BNSOL", "MSOL", "JITOSOL"
+)
+
 # Ehemalige Binance Leveraged Tokens (BLVT / FTX-Leveraged) gezielt ausschließen
 # (Bewusst exakte Basisliste statt Regex "UP$", damit echte Coins wie JUP/SYRUP bleiben!)
 BLVT_UNDERLYINGS <- c(
@@ -33,10 +39,11 @@ EXCLUDED_LEVERAGED <- c(
   "BULL", "BEAR", "ETHBULL", "ETHBEAR", "BNBBULL", "BNBBEAR",
   "EOSBULL", "EOSBEAR", "XRPBULL", "XRPBEAR", "TRXBULL", "TRXBEAR"
 )
-EXCLUDED_ALL <- unique(c(EXCLUDED_BASES, EXCLUDED_LEVERAGED))
+
+EXCLUDED_ALL <- unique(c(EXCLUDED_BASES, EXCLUDED_WRAPPED, EXCLUDED_LEVERAGED))
 
 # ==============================================================================
-# 2. HILFSFUNKTIONEN FÜR DAS ÖFFENTLICHE BINANCE-S3-ARCHIV (OHNE EXTRA-PAKETE)
+# 2. HILFSFUNKTIONEN FÜR DAS ÖFFENTLICHE BINANCE-S3-ARCHIV
 # ==============================================================================
 extract_xml_tag <- function(xml_txt, tag) {
   pat <- sprintf("<%s>([^<]+)</%s>", tag, tag)
@@ -52,7 +59,6 @@ s3_fetch_xml <- function(query_url) {
   rawToChar(con$content)
 }
 
-# Alle jemals gelisteten Spot-Symbole direkt aus S3 auslesen (inkl. Delistings)
 list_all_s3_usdt_symbols <- function() {
   all_prefixes <- character(0)
   token <- NULL
@@ -77,20 +83,17 @@ list_all_s3_usdt_symbols <- function() {
     }
   }
 
-  # Nur echte Symbol-Ordner der Form ".../klines/{SYMBOL}/" extrahieren
   m <- regexec("^data/spot/monthly/klines/([A-Z0-9]+)/$", all_prefixes)
   syms <- unique(vapply(regmatches(all_prefixes, m), function(x) {
     if (length(x) >= 2L) x[2] else NA_character_
   }, character(1)))
   syms <- sort(syms[!is.na(syms)])
 
-  # Nur USDT-Paare, bereinigt um Stablecoins, Fiat & Leveraged Tokens
   usdt_syms <- syms[grepl("USDT$", syms)]
   bases <- sub("USDT$", "", usdt_syms)
   usdt_syms[!(bases %in% EXCLUDED_ALL)]
 }
 
-# Exakte Liste der vorhandenen 5m-ZIPs für einen Coin im Zeitraum holen (null 404s)
 list_coin_5m_zips <- function(sym, start_ym, end_ym) {
   url <- sprintf("%s?list-type=2&prefix=data/spot/monthly/klines/%s/5m/", S3_BASE, sym)
   xml_txt <- s3_fetch_xml(url)
@@ -105,7 +108,7 @@ list_coin_5m_zips <- function(sym, start_ym, end_ym) {
 }
 
 # ==============================================================================
-# 3. SYMBOL-UNIVERSUM HOLEN & PARALLEL PRO COIN LADEN
+# 3. SYMBOL-UNIVERSUM HOLEN & PARALLEL PRO COIN LADEN (MIT VOLLSTÄNDIGKEITS-CHECK)
 # ==============================================================================
 cat("Lese vollständiges historisches Binance-Spot-Universum aus S3 aus (inkl. Delistings)...\n")
 symbols <- list_all_s3_usdt_symbols()
@@ -117,12 +120,12 @@ col_names <- c(
   "taker_buy_volume", "taker_buy_quote_volume", "ignore"
 )
 
-# Lokaler Temp-Ordner auf C:\ (schont Google Drive Sync massiv!)
 work_tmp <- file.path(tempdir(), "binance_5m_tmp")
 dir.create(work_tmp, recursive = TRUE, showWarnings = FALSE)
 
 t_start <- Sys.time()
 n_total <- length(symbols)
+incomplete_log <- list()
 
 for (idx in seq_along(symbols)) {
   sym <- symbols[idx]
@@ -134,28 +137,52 @@ for (idx in seq_along(symbols)) {
   }
 
   zip_keys <- tryCatch(list_coin_5m_zips(sym, START_YM, END_YM), error = function(e) character(0))
-  if (length(zip_keys) == 0L) next # Coin war vor 2020 delistet oder hat keine 5m-Daten im Fenster
+  if (length(zip_keys) == 0L) next
 
   urls      <- paste0("https://data.binance.vision/", zip_keys)
   destfiles <- file.path(work_tmp, basename(zip_keys))
 
-  # Alle Monats-ZIPs dieses Coins parallel herunterladen
   dl <- tryCatch(
     multi_download(urls = urls, destfiles = destfiles, progress = FALSE, multiplex = TRUE),
     error = function(e) NULL
   )
   if (is.null(dl)) {
     unlink(destfiles)
+    incomplete_log[[length(incomplete_log) + 1L]] <- data.table(
+      symbol = sym, expected = length(urls), ok = 0L, reason = "multi_download_error"
+    )
     next
   }
 
-  ok_files <- dl$destfile[dl$success & dl$status_code == 200L & file.exists(dl$destfile)]
-  if (length(ok_files) == 0L) {
+  # 1x Retry für fehlgeschlagene Monats-ZIPs (z.B. kurzzeitiger Netzwerk-Timeout)
+  failed_idx <- which(!(dl$success & dl$status_code == 200L & file.exists(dl$destfile)))
+  if (length(failed_idx) > 0L) {
+    Sys.sleep(1)
+    dl_retry <- tryCatch(
+      multi_download(urls = urls[failed_idx], destfiles = destfiles[failed_idx],
+                     progress = FALSE, multiplex = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.null(dl_retry)) {
+      dl[failed_idx, ] <- dl_retry
+    }
+  }
+
+  ok_mask <- dl$success & dl$status_code == 200L & file.exists(dl$destfile)
+  if (sum(ok_mask) < length(urls)) {
+    cat(sprintf("[WARN] %-12s unvollständig (%d/%d ZIPs) -> übersprungen, kein Parquet geschrieben.\n",
+                sym, sum(ok_mask), length(urls)))
+    incomplete_log[[length(incomplete_log) + 1L]] <- data.table(
+      symbol = sym, expected = length(urls), ok = sum(ok_mask), reason = "incomplete_download"
+    )
     unlink(destfiles)
     next
   }
 
+  ok_files <- dl$destfile[ok_mask]
   sym_list <- vector("list", length(ok_files))
+  parse_error <- FALSE
+
   for (j in seq_along(ok_files)) {
     zf <- ok_files[j]
     dt <- tryCatch({
@@ -167,7 +194,11 @@ for (idx in seq_along(symbols)) {
       d
     }, error = function(e) NULL)
 
-    if (is.null(dt) || nrow(dt) == 0L) next
+    if (is.null(dt)) {
+      parse_error <- TRUE
+      break
+    }
+    if (nrow(dt) == 0L) next
     if (is.na(suppressWarnings(as.numeric(dt$open_time[1])))) dt <- dt[-1]
     if (nrow(dt) == 0L) next
 
@@ -188,7 +219,15 @@ for (idx in seq_along(symbols)) {
     )
   }
 
-  unlink(destfiles) # Lokale Temp-ZIPs sofort löschen
+  unlink(destfiles)
+
+  if (parse_error) {
+    cat(sprintf("[WARN] %-12s ZIP/CSV-Lesefehler -> übersprungen, kein Parquet geschrieben.\n", sym))
+    incomplete_log[[length(incomplete_log) + 1L]] <- data.table(
+      symbol = sym, expected = length(urls), ok = length(ok_files), reason = "parse_error"
+    )
+    next
+  }
 
   sym_list <- Filter(Negate(is.null), sym_list)
   if (length(sym_list) > 0L) {
@@ -208,5 +247,13 @@ for (idx in seq_along(symbols)) {
 }
 
 unlink(work_tmp, recursive = TRUE)
+
+if (length(incomplete_log) > 0L) {
+  inc_dt <- rbindlist(incomplete_log)
+  fwrite(inc_dt, "output/tables/download_incomplete_log.csv")
+  cat(sprintf("\nACHTUNG: %d Coins waren unvollständig -> siehe output/tables/download_incomplete_log.csv (Skript einfach erneut starten).\n",
+              nrow(inc_dt)))
+}
+
 n_saved <- length(list.files("data/processed/coins_5m", pattern = "\\.parquet$"))
 cat(sprintf("\nFertig! Insgesamt %d Coins als 5m-Parquet in data/processed/coins_5m/ gespeichert.\n", n_saved))

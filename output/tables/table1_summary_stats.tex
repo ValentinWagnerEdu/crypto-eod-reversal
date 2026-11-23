@@ -1,0 +1,25 @@
+\begin{table}[htbp]
+\centering
+\caption{Summary Statistics: Binance Spot 30-Minute Crypto Panel (Jan 2020 -- Okt 2026)}
+\label{tab:summary_stats}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrr}
+\toprule
+Variable & Mean & Std. Dev. & 10th & Median & 90th & Days & Obs. \\
+\midrule
+LH (23:30--00:00 UTC, \%) & 0.01 & 0.55 & -0.55 & -0.00 & 0.59 & 2,495 & 622,629 \\
+LH ex-last-5m (23:30--23:55 UTC, \%) & 0.00 & 0.51 & -0.52 & -0.01 & 0.53 & 2,495 & 622,629 \\
+ROD3 (00:00--23:00 UTC, \%) & -0.02 & 4.17 & -3.95 & -0.52 & 4.25 & 2,495 & 622,629 \\
+ROD (No Skip, \%) & -0.02 & 4.22 & -3.99 & -0.53 & 4.29 & 2,495 & 622,629 \\
+SLH (23:00--23:30 UTC, \%) & -0.01 & 0.57 & -0.60 & -0.02 & 0.58 & 2,495 & 622,629 \\
+All 30m Returns (\%) & -0.00 & 0.65 & -0.65 & -0.02 & 0.64 & 2,495 & 29,851,294 \\
+Realized Variance$_{t-1}$ ($\%^2$) & 78.28 & 211.69 & 20.93 & 42.08 & 123.16 & 2,495 & 622,224 \\
+Daily Volume$_{t-1}$ (Mio. USDT) & 36.53 & 180.74 & 1.38 & 5.34 & 51.12 & 2,495 & 622,629 \\
+LH Taker-Buy Share (\%) & 49.30 & 15.45 & 29.80 & 49.38 & 68.57 & 2,495 & 622,531 \\
+LH Trades (in 1,000) & 1.55 & 5.52 & 0.10 & 0.39 & 2.65 & 2,495 & 622,629 \\
+\bottomrule
+\end{tabular}%
+}
+\vspace{0.3em}
+\footnotesize{\textit{Notes:} Time-series averages of cross-sectional summary statistics (analogous to Table 1 in Baltussen, Da \& Soebhag, 2026). Sample: 661 Binance Spot non-stablecoin USDT pairs (including delistings, excluding wrapped/staked peg duplicates) across 2,495 days (Jan 2020 -- Okt 2026), dynamic lagged volume filter ($\ge 500$k USDT and above daily 10th percentile), 1\%/99\% cross-sectional winsorization. Realized Variance$_{t-1}$ is the daily sum of squared 5-minute returns scaled by $10^4$ ($\%^2$).}
+\end{table}

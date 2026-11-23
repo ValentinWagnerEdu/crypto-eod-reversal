@@ -1,0 +1,21 @@
+\begin{table}[htbp]
+\centering
+\caption{Cross-Sectional Concentration under Raw vs. 5\%-Capped Volume Weighting (Jan 2020 -- Okt 2026)}
+\label{tab:weight_concentration}
+\begin{tabular}{lrrrr}
+\toprule
+Metric & Mean & Median & 90th & Max \\
+\midrule
+Active Coins per Day ($N_t$) & 249.6 & 271.0 & 341.6 & 384.0 \\
+Effective $N$ (Raw-VW, $1/\sum w_i^2$) & 10.7 & 9.4 & 19.8 & 39.9 \\
+Effective $N$ (5\%-Capped-VW) & 42.2 & 43.1 & 49.9 & 64.7 \\
+BTC Weight in Raw-VW (\%) & 29.1 & 25.5 & 54.4 & 74.5 \\
+ETH Weight in Raw-VW (\%) & 13.6 & 12.9 & 20.2 & 34.4 \\
+Top-2 Coins Weight in Raw-VW (\%) & 43.3 & 41.0 & 66.0 & 82.7 \\
+Top-5 Coins Weight in Raw-VW (\%) & 57.6 & 57.0 & 75.6 & 86.5 \\
+Top-5 Coins Weight in 5\%-Capped-VW (\%) & 24.6 & 25.0 & 25.0 & 25.0 \\
+\bottomrule
+\end{tabular}
+\vspace{0.3em}
+\footnotesize{\textit{Notes:} Daily cross-sectional concentration across 2,495 active trading days (661 unique coins) based on lagged daily USDT volume. 5\%-Capped-VW applies iterative water-filling capping so that no single asset exceeds 5\% weight while daily weights sum to 1.}
+\end{table}
