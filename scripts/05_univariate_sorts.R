@@ -94,9 +94,9 @@ nw_ols <- function(y, x = NULL, lag = NULL) {
 
 stars_fn <- function(t_val) {
   fcase(
-    abs(t_val) >= 2.576, "^{***}",
-    abs(t_val) >= 1.960, "^{**}",
-    abs(t_val) >= 1.645, "^{*}",
+    abs(t_val) >= 2.576, "$^{***}$",
+    abs(t_val) >= 1.960, "$^{**}$",
+    abs(t_val) >= 1.645, "$^{*}$",
     default = ""
   )
 }
@@ -257,8 +257,8 @@ build_panel_tex <- function(sum_dt, panel_title) {
       row <- sum_dt[scheme == sc & portfolio == p]
       vals_est <- c(
         vals_est,
-        sprintf("%.2f$%s$", row$R_bps, stars_fn(row$t_R)),
-        sprintf("%.2f$%s$", row$Alpha_bps, stars_fn(row$t_Alpha))
+        sprintf("%.2f%s", row$R_bps, stars_fn(row$t_R)),
+        sprintf("%.2f%s", row$Alpha_bps, stars_fn(row$t_Alpha))
       )
       vals_t <- c(
         vals_t,
