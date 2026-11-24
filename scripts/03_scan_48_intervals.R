@@ -2,7 +2,7 @@ library(data.table)
 library(arrow)
 library(fixest)
 library(ggplot2)
-library(timeDate) # einmalig: install.packages("timeDate")
+library(timeDate) # einmalig: 
 
 dir.create("output/figures", recursive = TRUE, showWarnings = FALSE)
 dir.create("output/tables", recursive = TRUE, showWarnings = FALSE)
